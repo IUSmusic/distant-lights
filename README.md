@@ -1,5 +1,7 @@
 # Distant Lights
 
+https://iusmusic.github.io/lights/
+
 Distant Lights is a **plain static browser demo** for exploring three related ideas:
 
 1. **Electrical / mechanical hum** from lighting electronics, transformers, ballasts, inductors, and capacitors.
