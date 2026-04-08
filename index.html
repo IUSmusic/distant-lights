@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Distant Lights</title>
+    <meta
+      name="description"
+      content="Distant Lights is a static browser demo for exploring light modulation, electrical/mechanical hum, photoacoustic approximation, and sonification of slow beacons."
+    />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="page">
+      <header class="hero card dark">
+        <div>
+          <div class="eyebrow">Distant Lights</div>
+          <h1>Physics-informed light-to-sound demo</h1>
+          <p class="lede">
+            Hear modeled electrical hum, a simplified photoacoustic response, and carrier-based sonification
+            for slow flashing lights. This version is a static site: no build step, no framework install, no blank-screen GitHub Pages issue.
+          </p>
+        </div>
+        <div class="status" id="statusText">Ready</div>
+      </header>
+
+      <main class="grid">
+        <section class="left-col">
+          <div class="card dark controls-hero">
+            <div class="row wrap gap">
+              <label class="field grow">
+                <span>Preset</span>
+                <select id="presetSelect"></select>
+              </label>
+              <label class="field grow">
+                <span>Label</span>
+                <input id="labelInput" type="text" />
+              </label>
+            </div>
+
+            <div class="button-row wrap">
+              <button id="playBtn" class="primary">Play</button>
+              <button id="stopBtn">Stop</button>
+              <button id="exportWavBtn">Download WAV</button>
+              <button id="recordBtn">Record 8s</button>
+              <button id="exportJsonBtn">Download preset</button>
+              <button id="saveBrowserBtn">Save to browser</button>
+              <label class="button like-button">
+                Import preset
+                <input id="importPresetInput" type="file" accept="application/json,.json" hidden />
+              </label>
+            </div>
+
+            <div class="small-note" id="capabilityText">
+              Works in modern browsers with Web Audio support.
+            </div>
+          </div>
+
+          <div class="preview-grid">
+            <section class="card dark">
+              <div class="section-title">Light modulation preview</div>
+              <canvas id="lightCanvas" width="640" height="220"></canvas>
+              <p class="hint">Source intensity waveform I(t). Frequency, duty cycle and depth shape the modulation.</p>
+            </section>
+            <section class="card dark">
+              <div class="section-title">Audio output preview</div>
+              <canvas id="audioCanvas" width="640" height="220"></canvas>
+              <p class="hint">Estimated pressure/audio signal after model response, resonance, optional whine and gain.</p>
+            </section>
+          </div>
+
+          <section class="card dark chain-card">
+            <div class="section-title">What is happening</div>
+            <div class="chain" id="chainText"></div>
+            <div class="summary-grid">
+              <div class="summary-box">
+                <div class="summary-label">Model</div>
+                <div class="summary-value" id="modelTitle"></div>
+                <p id="modelLine1"></p>
+                <p id="modelLine2"></p>
+              </div>
+              <div class="summary-box mono">
+                <div class="summary-label">Core equations</div>
+                <div id="formula1"></div>
+                <div id="formula2"></div>
+              </div>
+              <div class="summary-box mono">
+                <div class="summary-label">Current interpretation</div>
+                <div id="literalStatus"></div>
+                <div id="numericSummary"></div>
+              </div>
+            </div>
+            <div class="warning" id="warningBox"></div>
+          </section>
+        </section>
+
+        <aside class="right-col">
+          <section class="card">
+            <h2>Controls</h2>
+            <div id="controlsContainer" class="controls-grid"></div>
+          </section>
+
+          <section class="card">
+            <h2>Saved browser presets</h2>
+            <div class="row gap wrap">
+              <select id="savedPresetSelect" class="grow"></select>
+              <button id="loadBrowserBtn">Load</button>
+              <button id="deleteBrowserBtn">Delete</button>
+            </div>
+            <p class="hint">These use localStorage in your browser. Downloaded JSON presets are portable.</p>
+          </section>
+
+          <section class="card">
+            <h2>How to use this demo</h2>
+            <ol class="steps">
+              <li>Choose a preset or edit the sliders.</li>
+              <li>Press Play to hear the modeled output.</li>
+              <li>Watch the waveform previews to see the source and output signals.</li>
+              <li>Download WAV for high-quality audio, or Record 8s for a quick live capture.</li>
+              <li>Save presets as JSON or in the browser for reuse.</li>
+            </ol>
+          </section>
+        </aside>
+      </main>
+    </div>
+
+    <script src="app.js"></script>
+  </body>
+</html>
