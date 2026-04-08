@@ -637,7 +637,7 @@ function init() {
   refreshSavedPresetSelect();
   bindEvents();
   els.capabilityText.textContent = window.AudioContext || window.webkitAudioContext
-    ? "Compact single-page layout applied"
+    ? ""
     : "Web Audio unavailable in this browser";
   render();
 }
