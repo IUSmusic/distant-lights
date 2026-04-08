@@ -6,20 +6,6 @@ Distant Lights is a **plain static browser demo** for exploring three related id
 2. **Photoacoustic response** from intensity-modulated light absorbed by a material.
 3. **Sonification** for slow flashing lights that are below the normal audible range.
 
-This version is deliberately simple:
-- no framework install
-- no build step
-- no GitHub Actions required
-- no Vite config required
-- runs directly from `index.html`
-
-## What is included
-
-- `index.html` — the demo page
-- `styles.css` — styling
-- `app.js` — all audio, waveform, preset, save, record, and export logic
-- `.nojekyll` — helps GitHub Pages serve the repo root as a static site
-
 ## Features
 
 - interactive presets
@@ -32,25 +18,6 @@ This version is deliberately simple:
 - preset import from JSON
 - preset save/load in browser localStorage
 - model explanation panel with equations and interpretation text
-
-## How to publish on GitHub Pages
-
-### Option A: repo root publish
-
-1. Delete the old project files from the repository root.
-2. Upload the contents of this folder to the **repo root**.
-3. In GitHub, go to **Settings → Pages**.
-4. Set **Source** to **Deploy from a branch**.
-5. Choose **Branch: `main`** and **Folder: `/ (root)`**.
-6. Save.
-
-Then the demo should be served directly from:
-
-`https://iusmusic.github.io/distant-lights/`
-
-### Option B: keep using GitHub Actions
-
-If the repository is already set to publish from GitHub Actions, either switch it back to **Deploy from a branch**, or create a workflow that uploads the repository root as a Pages artifact. This static version does not need a build.
 
 ## Physics model used in the demo
 
