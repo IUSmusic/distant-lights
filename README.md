@@ -55,11 +55,11 @@ When an AC current flows through coils and magnetic cores in LED drivers,
 transformers or ballasts, the core experiences **magnetostriction**: ferromagnetic
 materials expand and contract as the magnetic field changes.  Because the
 magnetisation swings positive and negative every half‑cycle, each lamination of
-the core lengthens and shortens **twice per magnetisation cycle**【999855634313556†L107-L116】.  A 60 Hz power line therefore induces
+the core lengthens and shortens **twice per magnetisation cycle**.  A 60 Hz power line therefore induces
 expansion and contraction at 120 Hz.  The amplitude of vibration depends on the
 magnetic flux density and is modulated by the load current.  Irregularities in the
 core, windings and mounting cause vibrations at multiples of this fundamental
-frequency【999855634313556†L107-L116】.
+frequency.
 
 We approximate the electrical driving signal as a base current with a small
 modulation depth:
@@ -88,7 +88,7 @@ centre frequency \(f_{\text{res}}\) and quality factor \(Q\), and `A_whine` and
 drivers or coil whine.  The first term accounts for unfiltered mains ripple,
 the second term emphasises the dominant mechanical resonance, and the third term
 adds an independent sinusoid.  Real devices may exhibit multiple resonances and
-strongly non‑linear magnetostriction【999855634313556†L107-L116】, but a single
+strongly non‑linear magnetostriction, but a single
 band‑pass is sufficient for pedagogical purposes.
 
 ### 2) Photoacoustic response
@@ -96,8 +96,8 @@ band‑pass is sufficient for pedagogical purposes.
 When a beam of light with periodically varying intensity is absorbed by a
 material, the absorbed energy is converted into heat and a thermoelastic
 expansion, which launches acoustic waves.  This phenomenon is known as the
-**photoacoustic effect**【481868254809402†L156-L163】.  The sound pressure is
-measured with microphones or piezoelectric sensors【481868254809402†L156-L163】.  In full generality one should solve
+**photoacoustic effect**.  The sound pressure is
+measured with microphones or piezoelectric sensors.  In full generality one should solve
 the coupled thermal diffusion and elastic wave equations with appropriate
 boundary conditions.  For educational use we adopt a simpler model:
 
@@ -145,12 +145,12 @@ The models above deliberately omit many physical details:
 
 - **Linear magnetostriction approximation**.  Real cores exhibit hysteresis and
   higher‑order harmonics due to non‑linear magnetostriction.  We approximate
-  vibration as a linear transfer function with a single resonance【999855634313556†L107-L116】.
+  vibration as a linear transfer function with a single resonance.
 - **Single‑pole thermal model**.  The photoacoustic module ignores spatial
   gradients, sample geometry, thermal diffusion into the environment and the
   coupling between heating and pressure waves.  A more complete description
   would solve the heat equation and the wave equation in at least one spatial
-  dimension【452880545178659†L90-L99】.
+  dimension.
 - **No electromagnetic radiation coupling**.  Effects such as capacitive
   coupling, electromagnetic interference and microphonic pickups are beyond
   scope.
@@ -300,13 +300,13 @@ above:
 
 - Wikipedia, *Photoacoustic effect*: describes how sound waves form following
   light absorption, the need for modulated light and detection by microphones
-  or piezoelectric sensors【481868254809402†L156-L163】.
+  or piezoelectric sensors.
 
 ### Heat conduction and thermal diffusion
 
 - M. Hancock, *The 1‑D Heat Equation*, MIT OpenCourseWare: derives the heat
   equation from conservation of energy and Fourier’s law and introduces
-  thermal diffusivity \(\kappa\)【452880545178659†L90-L99】.
+  thermal diffusivity \(\kappa\).
 
 ### Sonification and signal processing
 
