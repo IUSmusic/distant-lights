@@ -1,0 +1,12 @@
+{
+  "title": "Distant Lights",
+  "upload_type": "software",
+  "description": "Physics-informed light-to-sound toolkit with browser demo, sequencing, automation and Python validation pipeline.",
+  "creators": [
+    {
+      "name": "ChatGPT, OpenAI"
+    }
+  ],
+  "license": "MIT",
+  "keywords": ["audio synthesis", "photoacoustic", "magnetostriction", "midi", "osc"]
+}

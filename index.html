@@ -4,10 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <title>Distant Lights</title>
-    <meta
-      name="description"
-      content="Compact physics-informed light-to-sound demo."
-    />
+    <meta name="description" content="Physics-informed light-to-sound playground with sequencing, layering and automation." />
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
@@ -24,10 +21,14 @@
 
           <div class="button-row compact-buttons wrap">
             <button id="playBtn" class="primary">Play</button>
+            <button id="playProjectBtn">Play project</button>
             <button id="stopBtn">Stop</button>
             <button id="exportWavBtn">WAV</button>
+            <button id="exportProjectWavBtn">Seq WAV</button>
             <button id="recordBtn">Record</button>
-            <button id="exportJsonBtn">Preset</button>
+            <button id="exportMidiBtn">MIDI</button>
+            <button id="exportOscBtn">OSC</button>
+            <button id="exportJsonBtn">Project JSON</button>
             <button id="saveBrowserBtn">Save</button>
             <label class="button like-button compact-file-btn">
               Import
@@ -76,8 +77,29 @@
           </div>
           <div id="controlsContainer" class="controls-grid compact-controls"></div>
 
+          <section class="panel-subsection">
+            <div class="saved-head">Layering</div>
+            <div class="layers-grid">
+              <label class="layer-card">
+                <input id="layerElectricalEnabled" type="checkbox" checked />
+                <span>Electrical hum</span>
+                <input id="layerElectricalGain" type="range" min="0" max="2" step="0.01" value="1" />
+              </label>
+              <label class="layer-card">
+                <input id="layerPhotoEnabled" type="checkbox" />
+                <span>Photoacoustic</span>
+                <input id="layerPhotoGain" type="range" min="0" max="2" step="0.01" value="0.8" />
+              </label>
+              <label class="layer-card">
+                <input id="layerSonifyEnabled" type="checkbox" />
+                <span>Sonification</span>
+                <input id="layerSonifyGain" type="range" min="0" max="2" step="0.01" value="0.8" />
+              </label>
+            </div>
+          </section>
+
           <section class="saved-inline">
-            <div class="saved-head">Saved browser presets</div>
+            <div class="saved-head">Saved browser projects</div>
             <div class="saved-row">
               <select id="savedPresetSelect" class="grow"></select>
               <button id="loadBrowserBtn">Load</button>
@@ -86,10 +108,34 @@
           </section>
         </aside>
       </main>
+
+      <section class="panel dark project-panel">
+        <div class="section-head">
+          <h2>Automation / LFO</h2>
+          <div class="button-row compact-buttons">
+            <button id="addAutomationLaneBtn">Add lane</button>
+          </div>
+        </div>
+        <div id="automationContainer" class="automation-stack"></div>
+      </section>
+
+      <section class="panel dark project-panel">
+        <div class="section-head">
+          <h2>Sequence / timeline editor</h2>
+          <div class="button-row compact-buttons">
+            <button id="addCurrentEventBtn">Add current as event</button>
+            <button id="clearSequenceBtn">Clear sequence</button>
+          </div>
+        </div>
+        <label class="field bpm-field">
+          <span>MIDI tempo (BPM)</span>
+          <input id="sequenceBpmInput" type="number" min="20" max="300" step="1" value="120" />
+        </label>
+        <canvas id="timelineCanvas" class="timeline-canvas" width="1200" height="96"></canvas>
+        <div id="sequenceContainer" class="sequence-stack"></div>
+      </section>
     </div>
 
-    <!-- The entry point uses ES modules.  Loading with type="module" enables
-         top‑level import/export and ensures modules are executed in strict mode. -->
     <script type="module" src="main.js"></script>
   </body>
 </html>

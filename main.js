@@ -1,8 +1,9 @@
 /**
- * Entry point for the Distant Lights demo.  This module wires together the
- * parameter model, synthesiser, UI controls and persistence.  All DOM
- * interactions occur here; the rest of the code base is organised into
- * focused modules under `models/`, `audio-engine/`, `ui/` and `presets/`.
+ * Distant Lights – browser entry point.
+ *
+ * This file now wires together not only the single-preset demo, but also the
+ * timeline editor, multi-model layering, LFO automation, MIDI export and OSC-
+ * style project export requested for the full composer workflow.
  */
 
 import {
@@ -10,41 +11,71 @@ import {
   LOOP_SECONDS,
   EXPORT_SECONDS,
   RECORD_SECONDS,
-  DEFAULT_PARAMS,
   PRESETS,
   CONTROL_CONFIG,
 } from './presets/index.js';
 import { synthesize } from './audio-engine/synth.js';
+import { synthesizeProjectPreview, renderProjectSequence } from './audio-engine/project.js';
+import { sequenceToOscBundle } from './audio-engine/osc.js';
 import { floatToWav, downloadBlob, safeName } from './audio-engine/export.js';
+import { sequenceToMidi } from './models/midi.js';
 import { physicsSummary } from './models/physics.js';
 import { buildControls, populatePresetSelect, refreshSavedPresetSelect } from './ui/controls.js';
 import { drawSeries } from './ui/draw.js';
 import { loadSavedPresets, writeSavedPresets } from './ui/storage.js';
+import { renderAutomationLanes } from './ui/automation.js';
+import { drawTimeline, renderSequenceEditor } from './ui/timeline.js';
 
-// -----------------------------------------------------------------------------
-// Global state
-//
-// The mutable state object keeps track of the current parameter set and
-// synthesiser resources.  Because the Web Audio API requires explicit clean
-// up of nodes, we store references so we can stop playback.  The state is
-// initialised with a deep clone of the first built‑in preset to provide a
-// sensible starting point.
-
-/**
- * Deep clone of an arbitrary object using JSON serialisation.  This is safe
- * for plain objects and numbers/strings/booleans but will drop functions or
- * circular references.  It avoids sharing references between presets.
- *
- * @template T
- * @param {T} obj Object to clone.
- * @returns {T} Cloned object.
- */
+/** Deep clone helper for plain JSON data. */
 function clone(obj) {
   return JSON.parse(JSON.stringify(obj));
 }
 
+/** Basic waveform helper for the visual light preview. */
+function wavePreview(t, freq, waveform, duty) {
+  const phase = (t * freq) % 1;
+  const s = Math.sin(2 * Math.PI * freq * t);
+  switch (waveform) {
+    case 'sine': return s;
+    case 'square': return s >= 0 ? 1 : -1;
+    case 'triangle': return 1 - 4 * Math.abs(phase - 0.5);
+    case 'pwm': return phase < duty ? 1 : -1;
+    case 'abs-sine': return Math.abs(s) * 2 - 1;
+    default: return s;
+  }
+}
+
+/** Default automation lane factory. */
+function makeAutomationLane(target = 'depth') {
+  return {
+    enabled: true,
+    target,
+    waveform: 'sine',
+    mode: 'add',
+    rateHz: 0.5,
+    depth: 0.08,
+    phaseDegrees: 0,
+  };
+}
+
+/** Initial multi-model layer settings. */
+function defaultLayerSettings() {
+  return {
+    electricalEnabled: true,
+    electricalGain: 1,
+    photoacousticEnabled: false,
+    photoacousticGain: 0.8,
+    sonificationEnabled: false,
+    sonificationGain: 0.8,
+  };
+}
+
 const state = {
   params: clone(PRESETS[0].params),
+  layerSettings: defaultLayerSettings(),
+  automationLanes: [makeAutomationLane('depth')],
+  sequenceEvents: [],
+  sequenceBpm: 120,
   isPlaying: false,
   isRecording: false,
   audioContext: null,
@@ -54,48 +85,163 @@ const state = {
   recorder: null,
   recordChunks: [],
   recordTimeout: null,
+  selectedSequenceIndex: -1,
 };
 
-// References to DOM elements.  This lookup happens once on load rather than
-// repeatedly during event handling.  If you add new UI elements to
-// `index.html`, declare them here with the corresponding ID.
 const els = {
-  presetSelect: /** @type {HTMLSelectElement} */ (document.getElementById('presetSelect')),
-  controlsContainer: /** @type {HTMLElement} */ (document.getElementById('controlsContainer')),
-  savedPresetSelect: /** @type {HTMLSelectElement} */ (document.getElementById('savedPresetSelect')),
-  statusText: /** @type {HTMLElement} */ (document.getElementById('statusText')),
-  capabilityText: /** @type {HTMLElement} */ (document.getElementById('capabilityText')),
-  lightCanvas: /** @type {HTMLCanvasElement} */ (document.getElementById('lightCanvas')),
-  audioCanvas: /** @type {HTMLCanvasElement} */ (document.getElementById('audioCanvas')),
-  modelTitle: /** @type {HTMLElement} */ (document.getElementById('modelTitle')),
-  formula1: /** @type {HTMLElement} */ (document.getElementById('formula1')),
-  formula2: /** @type {HTMLElement} */ (document.getElementById('formula2')),
-  literalStatus: /** @type {HTMLElement} */ (document.getElementById('literalStatus')),
-  numericSummary: /** @type {HTMLElement} */ (document.getElementById('numericSummary')),
-  warningBox: /** @type {HTMLElement} */ (document.getElementById('warningBox')),
-  playBtn: /** @type {HTMLButtonElement} */ (document.getElementById('playBtn')),
-  stopBtn: /** @type {HTMLButtonElement} */ (document.getElementById('stopBtn')),
-  exportWavBtn: /** @type {HTMLButtonElement} */ (document.getElementById('exportWavBtn')),
-  recordBtn: /** @type {HTMLButtonElement} */ (document.getElementById('recordBtn')),
-  exportJsonBtn: /** @type {HTMLButtonElement} */ (document.getElementById('exportJsonBtn')),
-  saveBrowserBtn: /** @type {HTMLButtonElement} */ (document.getElementById('saveBrowserBtn')),
-  loadBrowserBtn: /** @type {HTMLButtonElement} */ (document.getElementById('loadBrowserBtn')),
-  deleteBrowserBtn: /** @type {HTMLButtonElement} */ (document.getElementById('deleteBrowserBtn')),
-  importPresetInput: /** @type {HTMLInputElement} */ (document.getElementById('importPresetInput')),
+  presetSelect: document.getElementById('presetSelect'),
+  controlsContainer: document.getElementById('controlsContainer'),
+  savedPresetSelect: document.getElementById('savedPresetSelect'),
+  statusText: document.getElementById('statusText'),
+  capabilityText: document.getElementById('capabilityText'),
+  lightCanvas: document.getElementById('lightCanvas'),
+  audioCanvas: document.getElementById('audioCanvas'),
+  timelineCanvas: document.getElementById('timelineCanvas'),
+  sequenceContainer: document.getElementById('sequenceContainer'),
+  automationContainer: document.getElementById('automationContainer'),
+  modelTitle: document.getElementById('modelTitle'),
+  formula1: document.getElementById('formula1'),
+  formula2: document.getElementById('formula2'),
+  literalStatus: document.getElementById('literalStatus'),
+  numericSummary: document.getElementById('numericSummary'),
+  warningBox: document.getElementById('warningBox'),
+  playBtn: document.getElementById('playBtn'),
+  playProjectBtn: document.getElementById('playProjectBtn'),
+  stopBtn: document.getElementById('stopBtn'),
+  exportWavBtn: document.getElementById('exportWavBtn'),
+  exportProjectWavBtn: document.getElementById('exportProjectWavBtn'),
+  exportMidiBtn: document.getElementById('exportMidiBtn'),
+  exportOscBtn: document.getElementById('exportOscBtn'),
+  recordBtn: document.getElementById('recordBtn'),
+  exportJsonBtn: document.getElementById('exportJsonBtn'),
+  saveBrowserBtn: document.getElementById('saveBrowserBtn'),
+  loadBrowserBtn: document.getElementById('loadBrowserBtn'),
+  deleteBrowserBtn: document.getElementById('deleteBrowserBtn'),
+  importPresetInput: document.getElementById('importPresetInput'),
+  addCurrentEventBtn: document.getElementById('addCurrentEventBtn'),
+  clearSequenceBtn: document.getElementById('clearSequenceBtn'),
+  addAutomationLaneBtn: document.getElementById('addAutomationLaneBtn'),
+  sequenceBpmInput: document.getElementById('sequenceBpmInput'),
+  layerElectricalEnabled: document.getElementById('layerElectricalEnabled'),
+  layerElectricalGain: document.getElementById('layerElectricalGain'),
+  layerPhotoEnabled: document.getElementById('layerPhotoEnabled'),
+  layerPhotoGain: document.getElementById('layerPhotoGain'),
+  layerSonifyEnabled: document.getElementById('layerSonifyEnabled'),
+  layerSonifyGain: document.getElementById('layerSonifyGain'),
 };
 
-// -----------------------------------------------------------------------------
-// Helper functions
+/** Return the list of numeric control keys that automation may target. */
+function automationTargets() {
+  return CONTROL_CONFIG.filter((config) => config.type === 'range').map((config) => config.key);
+}
+
+/** Keep the layer UI and state synchronized. */
+function syncLayerUiToState() {
+  els.layerElectricalEnabled.checked = !!state.layerSettings.electricalEnabled;
+  els.layerElectricalGain.value = state.layerSettings.electricalGain;
+  els.layerPhotoEnabled.checked = !!state.layerSettings.photoacousticEnabled;
+  els.layerPhotoGain.value = state.layerSettings.photoacousticGain;
+  els.layerSonifyEnabled.checked = !!state.layerSettings.sonificationEnabled;
+  els.layerSonifyGain.value = state.layerSettings.sonificationGain;
+}
+
+/** Read current layer control values into state. */
+function syncLayerStateFromUi() {
+  state.layerSettings = {
+    electricalEnabled: els.layerElectricalEnabled.checked,
+    electricalGain: Number(els.layerElectricalGain.value),
+    photoacousticEnabled: els.layerPhotoEnabled.checked,
+    photoacousticGain: Number(els.layerPhotoGain.value),
+    sonificationEnabled: els.layerSonifyEnabled.checked,
+    sonificationGain: Number(els.layerSonifyGain.value),
+  };
+}
+
+/** Serialize the current full project, not just the current preset. */
+function serializeProject() {
+  return {
+    version: 'distant-lights-project-v2',
+    label: state.params.label,
+    params: clone(state.params),
+    layerSettings: clone(state.layerSettings),
+    automationLanes: clone(state.automationLanes),
+    sequenceBpm: state.sequenceBpm,
+    sequenceEvents: clone(state.sequenceEvents),
+  };
+}
 
 /**
- * Update the preview canvases to reflect the current parameter values.  The
- * preview uses a lower sample rate and shorter duration than the final
- * synthesis to remain responsive.  This function is called whenever a
- * parameter is modified.
+ * Restore either a legacy preset JSON or a full project JSON.
+ *
+ * @param {Object} payload Parsed JSON payload.
  */
+function restoreProject(payload) {
+  if (!payload) return;
+  if (payload.params) {
+    state.params = clone(payload.params);
+  }
+  if (payload.layerSettings) {
+    state.layerSettings = { ...defaultLayerSettings(), ...clone(payload.layerSettings) };
+  }
+  if (payload.automationLanes) {
+    state.automationLanes = clone(payload.automationLanes);
+  }
+  if (Array.isArray(payload.sequenceEvents)) {
+    state.sequenceEvents = clone(payload.sequenceEvents);
+  }
+  if (payload.sequenceBpm) {
+    state.sequenceBpm = Number(payload.sequenceBpm) || 120;
+  }
+  buildControls(els.controlsContainer, CONTROL_CONFIG, state.params, updateParam);
+  els.presetSelect.value = state.params.label;
+  syncLayerUiToState();
+  els.sequenceBpmInput.value = state.sequenceBpm;
+  refreshProjectUi();
+}
+
+/** Update all overview UI after data/state changes. */
+function refreshProjectUi() {
+  updatePreview();
+  updateNumericSummary();
+  updatePhysicsSummary();
+  renderAutomationLanes(els.automationContainer, state.automationLanes, automationTargets(), handleAutomationAction);
+  renderSequenceEditor(els.sequenceContainer, state.sequenceEvents, PRESETS, handleSequenceAction);
+  drawTimeline(els.timelineCanvas, state.sequenceEvents, state.selectedSequenceIndex);
+  els.capabilityText.textContent = `${state.sequenceEvents.length} event${state.sequenceEvents.length === 1 ? '' : 's'} · ${state.automationLanes.length} LFO lane${state.automationLanes.length === 1 ? '' : 's'}`;
+}
+
+/** Update numeric summary text. */
+function updateNumericSummary() {
+  const p = state.params;
+  const activeLayers = [
+    state.layerSettings.electricalEnabled ? 'elec' : null,
+    state.layerSettings.photoacousticEnabled ? 'photo' : null,
+    state.layerSettings.sonificationEnabled ? 'sonify' : null,
+  ].filter(Boolean).join('+') || 'none';
+  els.numericSummary.textContent = `f0=${p.baseFreq.toFixed(2)} Hz, depth=${p.depth.toFixed(2)}, Q=${p.resonanceQ.toFixed(2)}, gain=${p.gain.toFixed(2)}, layers=${activeLayers}`;
+}
+
+/** Render human-friendly formula strings. */
+function updatePhysicsSummary() {
+  const summary = physicsSummary(state.params);
+  els.modelTitle.textContent = summary.title;
+  els.formula1.textContent = summary.formula1.replaceAll('\\', '');
+  els.formula2.textContent = summary.formula2.replaceAll('\\', '');
+  if (state.layerSettings.photoacousticEnabled && state.layerSettings.electricalEnabled) {
+    els.literalStatus.textContent = 'layered hum + photoacoustic';
+  } else if (state.layerSettings.sonificationEnabled) {
+    els.literalStatus.textContent = 'layered / sonified';
+  } else if (state.params.mode === 'photoacoustic') {
+    els.literalStatus.textContent = 'thermal diffusion → pressure';
+  } else {
+    els.literalStatus.textContent = 'direct modulation / magnetostriction-inspired';
+  }
+}
+
+/** Update visual previews. */
 function updatePreview() {
-  // Generate a tiny buffer for preview (50 ms) at 4 kHz to reduce CPU load
-  const preview = synthesize({ ...state.params, gain: 1 }, 0.05, 4_000);
+  const previewDuration = 0.08;
+  const preview = synthesizeProjectPreview(state.params, previewDuration, 4000, state.automationLanes, state.layerSettings);
   const points = 180;
   const light = [];
   const audio = [];
@@ -111,63 +257,106 @@ function updatePreview() {
   drawSeries(els.audioCanvas, audio, '#ff0', true);
 }
 
-// Local helper to compute a waveform sample for the preview.  We re‑implement
-// the wave sample here rather than importing from the waveform module to avoid
-// circular dependencies (synth.js already imports waveforms).  See
-// models/waveforms.js for documentation.
-function wavePreview(t, freq, waveform, duty) {
-  const phase = (t * freq) % 1;
-  const s = Math.sin(2 * Math.PI * freq * t);
-  switch (waveform) {
-    case 'sine': return s;
-    case 'square': return s >= 0 ? 1 : -1;
-    case 'triangle': return 1 - 4 * Math.abs(phase - 0.5);
-    case 'pwm': return phase < duty ? 1 : -1;
-    case 'abs-sine': return Math.abs(s) * 2 - 1;
-    default: return s;
+/** Update one parameter from the main control surface. */
+function updateParam(key, value) {
+  state.params[key] = value;
+  refreshProjectUi();
+}
+
+/** Apply a built-in preset to the current editor state. */
+function applyPreset(preset) {
+  state.params = clone(preset.params);
+  buildControls(els.controlsContainer, CONTROL_CONFIG, state.params, updateParam);
+  refreshProjectUi();
+  els.presetSelect.value = state.params.label;
+}
+
+/** Save the current browser project. */
+function saveProjectToBrowser() {
+  const saved = loadSavedPresets();
+  const project = serializeProject();
+  const existingIndex = saved.findIndex((item) => item.label === project.label);
+  if (existingIndex >= 0) saved[existingIndex] = project;
+  else saved.push(project);
+  writeSavedPresets(saved);
+  refreshSavedPresetSelect(els.savedPresetSelect, saved);
+}
+
+/** Load a browser-saved project by index. */
+function loadProjectFromBrowser(index) {
+  const saved = loadSavedPresets();
+  if (!saved[index]) return;
+  restoreProject(saved[index]);
+}
+
+/** Delete a browser-saved project by index. */
+function deleteProjectFromBrowser(index) {
+  const saved = loadSavedPresets();
+  if (!saved[index]) return;
+  saved.splice(index, 1);
+  writeSavedPresets(saved);
+  refreshSavedPresetSelect(els.savedPresetSelect, saved);
+}
+
+/** Export the current project as JSON. */
+function exportProjectJson() {
+  const blob = new Blob([JSON.stringify(serializeProject(), null, 2)], { type: 'application/json' });
+  downloadBlob(blob, `${safeName(state.params.label)}-project.json`);
+}
+
+/** Import a project or legacy preset JSON file. */
+function importProjectFile(file) {
+  const reader = new FileReader();
+  reader.onload = () => {
+    try {
+      restoreProject(JSON.parse(String(reader.result)));
+    } catch (error) {
+      els.warningBox.textContent = `Import failed: ${error.message}`;
+    }
+  };
+  reader.readAsText(file);
+}
+
+/** Convert samples to an AudioBuffer and start playback. */
+async function playSamples(samples, { loop = false } = {}) {
+  stopPlayback();
+  if (!state.audioContext) {
+    state.audioContext = new (window.AudioContext || window.webkitAudioContext)();
   }
-}
-
-/**
- * Update the numeric summary display with key parameter values.  The summary
- * displays a compact representation of frequency, depth, resonance and gain
- * parameters so that users can quickly check settings.  Feel free to extend
- * this list with additional fields as your models evolve.
- */
-function updateNumericSummary() {
-  const p = state.params;
-  els.numericSummary.textContent = `f0=${p.baseFreq.toFixed(2)} Hz, depth=${p.depth.toFixed(2)}, Q=${p.resonanceQ.toFixed(2)}, gain=${p.gain.toFixed(2)}`;
-}
-
-/**
- * Update the physics summary panel.  This calls into {@link physicsSummary}
- * which returns LaTeX strings.  The innerHTML is set directly because the
- * formulas use backslash sequences.  A more sophisticated implementation
- * could typeset the formulas with MathJax.
- */
-function updatePhysicsSummary() {
-  const summary = physicsSummary(state.params);
-  els.modelTitle.textContent = summary.title;
-  els.formula1.textContent = summary.formula1;
-  els.formula2.textContent = summary.formula2;
-  // Interpretation text
-  if (state.params.mode === 'photoacoustic') {
-    els.literalStatus.textContent = 'thermal diffusion → pressure';
-  } else if (state.params.lowFreqSonify || state.params.baseFreq < 20) {
-    els.literalStatus.textContent = 'sonification (carrier)';
-  } else {
-    els.literalStatus.textContent = 'direct modulation';
+  if (state.audioContext.state === 'suspended') {
+    await state.audioContext.resume();
   }
+  const buffer = state.audioContext.createBuffer(1, samples.length, SAMPLE_RATE);
+  buffer.copyToChannel(samples, 0);
+  const source = state.audioContext.createBufferSource();
+  source.buffer = buffer;
+  source.loop = loop;
+  const gainNode = state.audioContext.createGain();
+  source.connect(gainNode);
+  gainNode.connect(state.audioContext.destination);
+  if (state.isRecording && state.mediaDest) gainNode.connect(state.mediaDest);
+  source.start();
+  source.onended = () => {
+    if (!source.loop) {
+      state.isPlaying = false;
+      els.playBtn.disabled = false;
+      els.playProjectBtn.disabled = false;
+      els.stopBtn.disabled = true;
+      els.statusText.textContent = 'Ready';
+    }
+  };
+  state.source = source;
+  state.gainNode = gainNode;
+  state.isPlaying = true;
+  els.playBtn.disabled = loop;
+  els.playProjectBtn.disabled = true;
+  els.stopBtn.disabled = false;
 }
 
-/**
- * Stop any currently playing audio and release associated resources.  This
- * should be called before starting new playback or when the user clicks the
- * Stop button.  The Web Audio API nodes are closed and cleared.
- */
+/** Stop playback and release audio nodes. */
 function stopPlayback() {
   if (state.source) {
-    state.source.stop();
+    try { state.source.stop(); } catch {}
     state.source.disconnect();
     state.source = null;
   }
@@ -175,292 +364,250 @@ function stopPlayback() {
     state.gainNode.disconnect();
     state.gainNode = null;
   }
-  if (state.mediaDest) {
+  if (state.mediaDest && !state.isRecording) {
     state.mediaDest.disconnect();
     state.mediaDest = null;
   }
   state.isPlaying = false;
   els.playBtn.disabled = false;
+  els.playProjectBtn.disabled = false;
   els.stopBtn.disabled = true;
-  els.statusText.textContent = 'Stopped';
+  if (!state.isRecording) els.statusText.textContent = 'Stopped';
 }
 
-/**
- * Start audio playback using the current parameters.  A new AudioContext is
- * created if one does not already exist.  The synthesised buffer is looped
- * according to {@link LOOP_SECONDS}.  If the browser does not support the
- * Web Audio API (unlikely) a warning is displayed.
- */
-function startPlayback() {
-  if (state.isPlaying) return;
-  try {
-    if (!state.audioContext) {
-      state.audioContext = new (window.AudioContext || window.webkitAudioContext)();
-    }
-    const buffer = synthesize(state.params, LOOP_SECONDS, SAMPLE_RATE);
-    const audioBuffer = state.audioContext.createBuffer(1, buffer.length, SAMPLE_RATE);
-    audioBuffer.copyToChannel(buffer, 0);
-    const source = state.audioContext.createBufferSource();
-    source.buffer = audioBuffer;
-    source.loop = true;
-    const gainNode = state.audioContext.createGain();
-    source.connect(gainNode);
-    gainNode.connect(state.audioContext.destination);
-    // Connect to recorder if in recording mode
-    if (state.isRecording && state.mediaDest) {
-      gainNode.connect(state.mediaDest);
-    }
-    source.start();
-    state.source = source;
-    state.gainNode = gainNode;
-    state.isPlaying = true;
-    els.playBtn.disabled = true;
-    els.stopBtn.disabled = false;
-    els.statusText.textContent = 'Playing';
-  } catch (err) {
-    els.warningBox.textContent = 'Web Audio API not supported: ' + err.message;
+/** Play the current layered sound as a looping preview. */
+async function startPlayback() {
+  els.statusText.textContent = 'Playing preview';
+  const samples = synthesizeProjectPreview(state.params, LOOP_SECONDS, SAMPLE_RATE, state.automationLanes, state.layerSettings);
+  await playSamples(samples, { loop: true });
+}
+
+/** Play the full project sequence once. */
+async function startProjectPlayback() {
+  if (!state.sequenceEvents.length) {
+    els.warningBox.textContent = 'Add at least one event to the timeline first.';
+    return;
   }
+  els.statusText.textContent = 'Playing sequence';
+  const samples = renderProjectSequence(state.sequenceEvents, SAMPLE_RATE);
+  await playSamples(samples, { loop: false });
 }
 
-/**
- * Begin recording audio to a WebM/Opus blob using the MediaRecorder API.  The
- * recording will stop automatically after {@link RECORD_SECONDS} seconds or
- * when the user clicks the record button again.  Recorded data is stored in
- * `state.recordChunks` and finalised when recording stops.
- */
-function startRecording() {
+/** Export the current layered preview as WAV. */
+function exportCurrentWav() {
+  const samples = synthesizeProjectPreview(state.params, EXPORT_SECONDS, SAMPLE_RATE, state.automationLanes, state.layerSettings);
+  const blob = floatToWav(samples, SAMPLE_RATE);
+  downloadBlob(blob, `${safeName(state.params.label)}.wav`);
+}
+
+/** Export the timeline as WAV. */
+function exportProjectWav() {
+  const samples = state.sequenceEvents.length
+    ? renderProjectSequence(state.sequenceEvents, SAMPLE_RATE)
+    : synthesizeProjectPreview(state.params, EXPORT_SECONDS, SAMPLE_RATE, state.automationLanes, state.layerSettings);
+  const blob = floatToWav(samples, SAMPLE_RATE);
+  downloadBlob(blob, `${safeName(state.params.label)}-sequence.wav`);
+}
+
+/** Export the timeline as a Standard MIDI file. */
+function exportMidi() {
+  const events = state.sequenceEvents.length ? state.sequenceEvents : [{
+    label: state.params.label,
+    start: 0,
+    duration: 4,
+    params: clone(state.params),
+    layerSettings: clone(state.layerSettings),
+    automationLanes: clone(state.automationLanes),
+  }];
+  const midi = sequenceToMidi(events, state.sequenceBpm);
+  const blob = new Blob([midi], { type: 'audio/midi' });
+  downloadBlob(blob, `${safeName(state.params.label)}.mid`);
+}
+
+/** Export an OSC-style JSON bundle. */
+function exportOsc() {
+  const events = state.sequenceEvents.length ? state.sequenceEvents : [{
+    label: state.params.label,
+    start: 0,
+    duration: 4,
+    params: clone(state.params),
+    layerSettings: clone(state.layerSettings),
+    automationLanes: clone(state.automationLanes),
+  }];
+  const oscJson = sequenceToOscBundle(events);
+  const blob = new Blob([JSON.stringify(oscJson, null, 2)], { type: 'application/json' });
+  downloadBlob(blob, `${safeName(state.params.label)}-osc.json`);
+}
+
+/** Start browser recording of the current preview output. */
+async function startRecording() {
   if (state.isRecording) {
     stopRecording();
     return;
   }
-  if (!navigator.mediaDevices || typeof MediaRecorder === 'undefined') {
-    els.warningBox.textContent = 'Recording not supported by this browser.';
+  if (typeof MediaRecorder === 'undefined') {
+    els.warningBox.textContent = 'MediaRecorder is not available in this browser.';
     return;
   }
-  // Ensure audio is playing so that recorder has a signal
-  if (!state.isPlaying) startPlayback();
-  const audioCtx = state.audioContext;
-  if (!audioCtx) return;
-  // Create media stream destination
-  state.mediaDest = audioCtx.createMediaStreamDestination();
-  // Connect the gain node to the recorder
-  if (state.gainNode) {
-    state.gainNode.connect(state.mediaDest);
+  if (!state.audioContext) {
+    state.audioContext = new (window.AudioContext || window.webkitAudioContext)();
   }
-  const recorder = new MediaRecorder(state.mediaDest.stream);
+  state.mediaDest = state.audioContext.createMediaStreamDestination();
   state.recordChunks = [];
-  recorder.ondataavailable = (e) => {
-    if (e.data.size > 0) state.recordChunks.push(e.data);
+  const recorder = new MediaRecorder(state.mediaDest.stream);
+  state.recorder = recorder;
+  state.isRecording = true;
+  els.recordBtn.textContent = 'Stop Rec';
+  els.statusText.textContent = 'Recording';
+  recorder.ondataavailable = (event) => {
+    if (event.data.size > 0) state.recordChunks.push(event.data);
   };
   recorder.onstop = () => {
     const blob = new Blob(state.recordChunks, { type: recorder.mimeType });
-    downloadBlob(blob, safeName(state.params.label) + '.webm');
-    els.recordBtn.textContent = 'Record';
+    downloadBlob(blob, `${safeName(state.params.label)}.webm`);
     state.isRecording = false;
+    els.recordBtn.textContent = 'Record';
     if (state.mediaDest) {
       state.mediaDest.disconnect();
       state.mediaDest = null;
     }
   };
   recorder.start();
-  state.recorder = recorder;
-  state.isRecording = true;
-  els.recordBtn.textContent = 'Stop Rec';
-  els.statusText.textContent = 'Recording';
-  // Stop recording after a fixed duration
-  state.recordTimeout = setTimeout(() => {
-    stopRecording();
-  }, RECORD_SECONDS * 1000);
+  if (state.isPlaying && state.gainNode && state.mediaDest) {
+    state.gainNode.connect(state.mediaDest);
+  } else {
+    await startPlayback();
+  }
+  state.recordTimeout = setTimeout(stopRecording, RECORD_SECONDS * 1000);
 }
 
-/**
- * Stop an ongoing recording.  This is called either when the user clicks
- * Record again or when the timeout fires.  The MediaRecorder stream is
- * stopped which triggers the `onstop` callback defined in
- * {@link startRecording}.
- */
+/** Stop browser recording. */
 function stopRecording() {
-  if (!state.isRecording) return;
-  if (state.recorder) state.recorder.stop();
   if (state.recordTimeout) clearTimeout(state.recordTimeout);
   state.recordTimeout = null;
+  if (state.recorder && state.isRecording) state.recorder.stop();
 }
 
-/**
- * Update a single parameter value and propagate changes to the preview,
- * numeric summary and physics panel.  The third argument `commit` indicates
- * whether the change should be persisted to history (for undo/redo) or if it
- * is part of an interactive drag on a range slider.  This sample
- * implementation does not implement an undo stack, but it could be added.
- *
- * @param {string} key   Parameter name.
- * @param {*} value      New value for the parameter.
- * @param {boolean} commit Whether the change is final (mouseup) or live.
- */
-function updateParam(key, value, commit) {
-  state.params[key] = value;
-  updatePreview();
-  updateNumericSummary();
-  updatePhysicsSummary();
+/** Add the current editor state as a new sequence event. */
+function addCurrentEvent() {
+  const lastEnd = state.sequenceEvents.reduce((max, event) => Math.max(max, event.start + event.duration), 0);
+  state.sequenceEvents.push({
+    label: state.params.label,
+    start: Number(lastEnd.toFixed(2)),
+    duration: 4,
+    params: clone(state.params),
+    layerSettings: clone(state.layerSettings),
+    automationLanes: clone(state.automationLanes),
+  });
+  state.selectedSequenceIndex = state.sequenceEvents.length - 1;
+  refreshProjectUi();
 }
 
-/**
- * Load a built‑in preset into the current state.  The parameter object is
- * cloned to avoid mutating the preset definition.  After updating the state
- * this function refreshes the controls and preview.
- *
- * @param {{name: string, params: Object}} preset
- */
-function applyPreset(preset) {
-  state.params = clone(preset.params);
-  // Rebuild the controls to reflect the new parameter values
-  buildControls(els.controlsContainer, CONTROL_CONFIG, state.params, updateParam);
-  updateNumericSummary();
-  updatePreview();
-  updatePhysicsSummary();
-  els.presetSelect.value = state.params.label;
-}
-
-/**
- * Export the current parameter set as a JSON file.  The file is named
- * according to the preset label.  The JSON contains only the parameter
- * values and not other state such as `isPlaying`.
- */
-function exportPreset() {
-  const data = JSON.stringify({ label: state.params.label, params: state.params }, null, 2);
-  const blob = new Blob([data], { type: 'application/json' });
-  downloadBlob(blob, safeName(state.params.label) + '.json');
-}
-
-/**
- * Import a preset from a JSON file selected via an `<input type="file">`.
- * The file should contain an object with `params` matching the parameter
- * schema.  On success the imported parameters replace the current state and
- * are displayed in the UI.
- */
-function importPreset(file) {
-  const reader = new FileReader();
-  reader.onload = () => {
-    try {
-      const obj = JSON.parse(reader.result);
-      if (obj && obj.params) {
-        state.params = clone(obj.params);
-        buildControls(els.controlsContainer, CONTROL_CONFIG, state.params, updateParam);
-        updateNumericSummary();
-        updatePreview();
-        updatePhysicsSummary();
-        els.presetSelect.value = state.params.label;
-      }
-    } catch (err) {
-      els.warningBox.textContent = 'Error importing preset: ' + err.message;
-    }
-  };
-  reader.readAsText(file);
-}
-
-/**
- * Save the current preset to browser localStorage.  If a preset with the same
- * label already exists it is replaced; otherwise it is appended.  After
- * saving the saved presets select element is refreshed.
- */
-function savePreset() {
-  const saved = loadSavedPresets();
-  const existing = saved.findIndex((p) => p.label === state.params.label);
-  if (existing >= 0) {
-    saved[existing] = { label: state.params.label, params: clone(state.params) };
-  } else {
-    saved.push({ label: state.params.label, params: clone(state.params) });
+/** Handle automation editor actions. */
+function handleAutomationAction(action, index, payload) {
+  if (action === 'update-field') {
+    state.automationLanes[index][payload.field] = payload.value;
+  } else if (action === 'remove') {
+    state.automationLanes.splice(index, 1);
   }
-  writeSavedPresets(saved);
-  refreshSavedPresetSelect(els.savedPresetSelect, saved);
+  refreshProjectUi();
 }
 
-/**
- * Load a preset from the saved presets list.  The index corresponds to the
- * position in the saved array.  The preset’s parameters replace the current
- * state and the UI is updated.  If the index is invalid nothing happens.
- */
-function loadPresetFromSaved(index) {
-  const saved = loadSavedPresets();
-  const entry = saved[index];
-  if (!entry) return;
-  state.params = clone(entry.params);
-  buildControls(els.controlsContainer, CONTROL_CONFIG, state.params, updateParam);
-  updateNumericSummary();
-  updatePreview();
-  updatePhysicsSummary();
-  els.presetSelect.value = state.params.label;
+/** Handle sequence editor actions. */
+function handleSequenceAction(action, index, payload) {
+  const event = state.sequenceEvents[index];
+  if (!event) return;
+  if (action === 'update-field') {
+    if (payload.field === 'presetLabel') {
+      const preset = PRESETS.find((candidate) => candidate.params.label === payload.value);
+      if (preset) {
+        event.params = clone(preset.params);
+        event.label = preset.name;
+      }
+    } else {
+      event[payload.field] = payload.value;
+    }
+  } else if (action === 'load') {
+    state.params = clone(event.params);
+    state.layerSettings = clone(event.layerSettings || defaultLayerSettings());
+    state.automationLanes = clone(event.automationLanes || [makeAutomationLane('depth')]);
+    buildControls(els.controlsContainer, CONTROL_CONFIG, state.params, updateParam);
+    syncLayerUiToState();
+    els.presetSelect.value = state.params.label;
+    state.selectedSequenceIndex = index;
+  } else if (action === 'dup') {
+    state.sequenceEvents.splice(index + 1, 0, {
+      ...clone(event),
+      start: Number((event.start + event.duration).toFixed(2)),
+      label: `${event.label} copy`,
+    });
+  } else if (action === 'remove') {
+    state.sequenceEvents.splice(index, 1);
+    state.selectedSequenceIndex = -1;
+  }
+  refreshProjectUi();
 }
 
-/**
- * Delete a saved preset.  The index corresponds to the option value of the
- * saved presets select.  After deletion the list is refreshed.  Nothing is
- * done if the index is invalid.
- */
-function deletePresetFromSaved(index) {
-  const saved = loadSavedPresets();
-  if (index < 0 || index >= saved.length) return;
-  saved.splice(index, 1);
-  writeSavedPresets(saved);
-  refreshSavedPresetSelect(els.savedPresetSelect, saved);
-}
-
-/**
- * Synthesize the entire buffer and trigger a WAV download.  Uses
- * {@link EXPORT_SECONDS} as the duration.
- */
-function exportWav() {
-  const samples = synthesize(state.params, EXPORT_SECONDS, SAMPLE_RATE);
-  const blob = floatToWav(samples, SAMPLE_RATE);
-  downloadBlob(blob, safeName(state.params.label) + '.wav');
-}
-
-// -----------------------------------------------------------------------------
-// Initialisation
-//
-// Build the UI and attach event listeners once the document has loaded.  All
-// interactive controls are delegated to the functions defined above.
-
-function init() {
-  // Populate built‑in preset selector
-  populatePresetSelect(els.presetSelect, PRESETS, state.params, (preset) => applyPreset(preset));
-  // Build parameter controls
-  buildControls(els.controlsContainer, CONTROL_CONFIG, state.params, updateParam);
-  // Populate saved presets selector
-  refreshSavedPresetSelect(els.savedPresetSelect, loadSavedPresets());
-  // Update preview and summaries
-  updateNumericSummary();
-  updatePreview();
-  updatePhysicsSummary();
-  // Enable/disable stop button initially
-  els.stopBtn.disabled = true;
-  // Event listeners
+/** Wire up static event listeners. */
+function bindEventListeners() {
   els.playBtn.addEventListener('click', startPlayback);
+  els.playProjectBtn.addEventListener('click', startProjectPlayback);
   els.stopBtn.addEventListener('click', () => {
     stopPlayback();
     stopRecording();
   });
-  els.exportWavBtn.addEventListener('click', exportWav);
+  els.exportWavBtn.addEventListener('click', exportCurrentWav);
+  els.exportProjectWavBtn.addEventListener('click', exportProjectWav);
+  els.exportMidiBtn.addEventListener('click', exportMidi);
+  els.exportOscBtn.addEventListener('click', exportOsc);
   els.recordBtn.addEventListener('click', startRecording);
-  els.exportJsonBtn.addEventListener('click', exportPreset);
-  els.saveBrowserBtn.addEventListener('click', savePreset);
-  els.loadBrowserBtn.addEventListener('click', () => {
-    const idx = parseInt(els.savedPresetSelect.value, 10);
-    loadPresetFromSaved(idx);
+  els.exportJsonBtn.addEventListener('click', exportProjectJson);
+  els.saveBrowserBtn.addEventListener('click', saveProjectToBrowser);
+  els.loadBrowserBtn.addEventListener('click', () => loadProjectFromBrowser(parseInt(els.savedPresetSelect.value, 10)));
+  els.deleteBrowserBtn.addEventListener('click', () => deleteProjectFromBrowser(parseInt(els.savedPresetSelect.value, 10)));
+  els.addCurrentEventBtn.addEventListener('click', addCurrentEvent);
+  els.clearSequenceBtn.addEventListener('click', () => {
+    state.sequenceEvents = [];
+    state.selectedSequenceIndex = -1;
+    refreshProjectUi();
   });
-  els.deleteBrowserBtn.addEventListener('click', () => {
-    const idx = parseInt(els.savedPresetSelect.value, 10);
-    deletePresetFromSaved(idx);
+  els.addAutomationLaneBtn.addEventListener('click', () => {
+    state.automationLanes.push(makeAutomationLane(automationTargets()[0]));
+    refreshProjectUi();
   });
+  els.sequenceBpmInput.addEventListener('change', () => {
+    state.sequenceBpm = Number(els.sequenceBpmInput.value) || 120;
+  });
+  [
+    els.layerElectricalEnabled,
+    els.layerElectricalGain,
+    els.layerPhotoEnabled,
+    els.layerPhotoGain,
+    els.layerSonifyEnabled,
+    els.layerSonifyGain,
+  ].forEach((element) => element.addEventListener('input', () => {
+    syncLayerStateFromUi();
+    refreshProjectUi();
+  }));
   els.importPresetInput.addEventListener('change', () => {
-    const files = els.importPresetInput.files;
-    if (files && files.length) importPreset(files[0]);
-    // Reset the input so the same file can be imported again
+    const file = els.importPresetInput.files?.[0];
+    if (file) importProjectFile(file);
     els.importPresetInput.value = '';
   });
 }
 
-// Kick off initialisation once the DOM is fully parsed
+/** Initial boot sequence. */
+function init() {
+  populatePresetSelect(els.presetSelect, PRESETS, state.params, applyPreset);
+  buildControls(els.controlsContainer, CONTROL_CONFIG, state.params, updateParam);
+  refreshSavedPresetSelect(els.savedPresetSelect, loadSavedPresets());
+  syncLayerUiToState();
+  els.sequenceBpmInput.value = state.sequenceBpm;
+  els.stopBtn.disabled = true;
+  bindEventListeners();
+  refreshProjectUi();
+}
+
 if (document.readyState === 'loading') {
   document.addEventListener('DOMContentLoaded', init);
 } else {
