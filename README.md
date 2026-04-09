@@ -114,7 +114,7 @@ photoacoustic solver would solve the one‑dimensional heat equation
 ```
 
 where \(u(x,t)\) is the temperature, \(\kappa\) is the thermal diffusivity and
-boundary conditions enforce insulation or contact with the sample【452880545178659†L90-L99】.  Our Python
+boundary conditions enforce insulation or contact with the sample.  Our Python
 port includes an experimental finite‑difference time‑domain solver (`run_photoacoustic_fdtd`) that
 implements this equation with Neumann boundary conditions (see documentation in
 `python/models.py`).  Note that the simple first‑order model neglects spatial
@@ -141,12 +141,12 @@ The models above deliberately omit many physical details:
 
 - **Linear magnetostriction approximation**.  Real cores exhibit hysteresis and
   higher‑order harmonics due to non‑linear magnetostriction.  We approximate
-  vibration as a linear transfer function with a single resonance【999855634313556†L107-L116】.
+  vibration as a linear transfer function with a single resonance.
 - **Single‑pole thermal model**.  The photoacoustic module ignores spatial
   gradients, sample geometry, thermal diffusion into the environment and the
   coupling between heating and pressure waves.  A more complete description
   would solve the heat equation and the wave equation in at least one spatial
-  dimension【452880545178659†L90-L99】.
+  dimension.
 - **No electromagnetic radiation coupling**.  Effects such as capacitive
   coupling, electromagnetic interference and microphonic pickups are beyond
   scope.
