@@ -1,22 +1,22 @@
 cff-version: 1.2.0
-title: Distant Lights
+message: "If you use this software, please cite it using the metadata below."
+title: "Distant Lights"
+type: software
 authors:
-  - family-names: OpenAI
-    given-names: ChatGPT
-message: "If you use this project, please cite the software and the accompanying technical report."
-version: 2.0.0
-date-released: 2026-04-09
-license: MIT
-abstract: >-
-  Distant Lights is a physics-informed light-to-sound toolkit featuring
-  electrical hum, photoacoustic synthesis, sonification, sequencing, layering,
-  automation and research-oriented Python simulation.
+  - name: "IUSmusic"
+repository-code: "https://github.com/IUSmusic/distant-lights"
+url: "https://iusmusic.github.io/distant-lights/"
+abstract: >
+  Distant Lights is a physics-informed light-to-sound lab for exploring
+  electrical/mechanical hum, photoacoustic sound generation, and sonification
+  of sub-audio light modulation patterns.
 keywords:
-  - audio synthesis
-  - photoacoustic
+  - light-to-sound
+  - sonification
+  - web-audio
+  - photoacoustics
   - magnetostriction
-  - sequencing
-  - midi
-  - osc
-repository-code: "https://example.invalid/distant-lights"
-url: "https://example.invalid/distant-lights"
+  - audio-synthesis
+license: "MIT"
+version: "1.0.0"
+date-released: 2026-04-09

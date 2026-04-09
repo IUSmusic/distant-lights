@@ -1,0 +1,37 @@
+{
+  "title": "Distant Lights",
+  "version": "1.0.0",
+  "upload_type": "software",
+  "access_right": "open",
+  "license": "mit",
+  "language": "eng",
+  "creators": [
+    {
+      "name": "IUSmusic",
+      "type": "ProjectMember"
+    }
+  ],
+  "description": "Distant Lights is a physics-informed light-to-sound lab for exploring electrical/mechanical hum, photoacoustic sound generation, and sonification of sub-audio light modulation patterns. The project is built as an interactive web app and companion research/demo codebase.",
+  "keywords": [
+    "light-to-sound",
+    "sonification",
+    "web-audio",
+    "photoacoustics",
+    "magnetostriction",
+    "audio synthesis",
+    "physics-informed audio",
+    "interactive music software"
+  ],
+  "related_identifiers": [
+    {
+      "identifier": "https://github.com/IUSmusic/distant-lights",
+      "relation": "isSupplementTo",
+      "scheme": "url"
+    },
+    {
+      "identifier": "https://iusmusic.github.io/distant-lights/",
+      "relation": "isDocumentedBy",
+      "scheme": "url"
+    }
+  ]
+}
