@@ -1,7 +1,7 @@
 # Distant Lights
 
 **Official Website**  
-https://iusmusic.github.io/lights/
+https://iusmusic.github.io/distant-lights/
 
 ![Platform](https://img.shields.io/badge/Platform-Web%20%7C%20Python-1f6feb)
 ![Format](https://img.shields.io/badge/Format-Software%20Instrument%20%7C%20Research%20Toolkit-ff8c42)
