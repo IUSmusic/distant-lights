@@ -3,7 +3,7 @@ message: "If you use this software, please cite it using the metadata below."
 title: "Distant Lights"
 type: software
 authors:
-  - name: "IUSmusic"
+  - name: "Pezhman Farhangi"
 repository-code: "https://github.com/IUSmusic/distant-lights"
 url: "https://iusmusic.github.io/distant-lights/"
 abstract: >
@@ -17,6 +17,6 @@ keywords:
   - photoacoustics
   - magnetostriction
   - audio-synthesis
-license: "MIT"
+license: "Subject to the terms"
 version: "1.0.0"
 date-released: 2026-04-09
